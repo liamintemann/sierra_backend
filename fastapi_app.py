@@ -1,13 +1,15 @@
 # Sierra backend (fastapi_app.py)
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 import httpx
 
-# Replace with your real secrets
+# ---------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------
 API_KEY = os.environ.get("SIERRA_API_KEY", "demo-secret")
 STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "sk_test_xxx")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -18,16 +20,24 @@ TWILIO_FROM = os.environ.get("TWILIO_FROM_NUMBER")
 
 app = FastAPI(title="Sierra Agent Tools")
 
+# ---------------------------------------------------------------------
+# Utility
+# ---------------------------------------------------------------------
 def authenticate(key: str | None):
+    """Simple header check."""
     if key != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-# Data models
+
+# ---------------------------------------------------------------------
+# Data Models
+# ---------------------------------------------------------------------
 class AvailabilityRequest(BaseModel):
     start_date: str
     end_date: str
     guests: int
     pets: bool | None = False
+
 
 class BookingRequest(BaseModel):
     guest_name: str
@@ -39,34 +49,40 @@ class BookingRequest(BaseModel):
     guests: int
     pets: bool | None = False
 
+
 class PaymentLinkRequest(BaseModel):
     booking_id: str
     amount: float
     currency: str = "USD"
 
+
 class SMSRequest(BaseModel):
     phone: str
     message: str
 
-# In-memory store for demo (replace with Supabase/DB)
+
+# ---------------------------------------------------------------------
+# In-Memory Demo Stores
+# ---------------------------------------------------------------------
 AVAILABILITY = {
     "Deluxe King": 5,
     "Deluxe Double Queen": 3,
     "Junior Suite": 2,
     "Signature Suite": 1,
-    "Penthouse Suite": 0
+    "Penthouse Suite": 0,
 }
-BOOKINGS = {}
+BOOKINGS: dict[str, dict] = {}
 
-# Tool: get_availability
+# ---------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------
 @app.post("/get_availability")
 async def get_availability(req: AvailabilityRequest, x_api_key: str | None = Header(None)):
     authenticate(x_api_key)
-    # Here you would query Supabase/PMS with req.start_date, req.end_date, etc.
-    # For demo, return counts based on dummy inventory
+    # Demo data; in production you’d query Supabase/PMS here
     return {"available_rooms": AVAILABILITY}
 
-# Tool: create_booking
+
 @app.post("/create_booking")
 async def create_booking(req: BookingRequest, x_api_key: str | None = Header(None)):
     authenticate(x_api_key)
@@ -81,35 +97,37 @@ async def create_booking(req: BookingRequest, x_api_key: str | None = Header(Non
         "guests": req.guests,
         "pets": req.pets,
         "status": "pending_payment",
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
     }
     return {"booking_id": booking_id}
 
-# Tool: create_payment_link
+
 @app.post("/create_payment_link")
 async def create_payment_link(req: PaymentLinkRequest, x_api_key: str | None = Header(None)):
     authenticate(x_api_key)
-    # Normally create a Stripe Checkout Session here
-    # For demo, return a fake URL
     fake_url = f"https://checkout.stripe.com/pay/{req.booking_id}"
-    # update booking status
     if req.booking_id in BOOKINGS:
         BOOKINGS[req.booking_id]["status"] = "awaiting_payment"
     return {"checkout_url": fake_url}
 
-# Tool: send_text
+
 @app.post("/send_text")
 async def send_text(req: SMSRequest, x_api_key: str | None = Header(None)):
     authenticate(x_api_key)
-    # Use Twilio REST API to send SMS (mocked here)
-    # Example: POST to https://api.twilio.com/2010-04-01/Accounts/{SID}/Messages.json
     print(f"[DEBUG] Sending SMS to {req.phone}: {req.message}")
     return {"status": "sent"}
 
-# Example extra: get_weather (if you decide to implement)
-@app.get("/get_weather")
-async def get_weather(lat: float, lon: float, x_api_key: str | None = Header(None)):
-    authenticate(x_api_key)
-    # Call external weather API (OpenWeather/NWS)
-    return {"temp_f": 32.0, "summary": "Snow showers", "source": "demo"}
 
+@app.get("/get_weather")
+async def get_weather(lat: float = 37.9375, lon: float = -107.8123, x_api_key: str | None = Header(None)):
+    authenticate(x_api_key)
+    # Fake data; later you can call OpenWeather API
+    return {"temp_f": 28.0, "summary": "Snow showers", "source": "demo"}
+
+
+# ---------------------------------------------------------------------
+# Local run entrypoint (important for Render & local testing)
+# ---------------------------------------------------------------------
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("fastapi_app:app", host="0.0.0.0", port=10000, reload=True)
