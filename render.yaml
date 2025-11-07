@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: sierra-backend
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn fastapi_app:app --host 0.0.0.0 --port 10000"
+    envVars:
+      - key: SIERRA_API_KEY
+        value: demo-secret
